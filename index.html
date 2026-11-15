@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>オンライントンボラホスト</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+<div id="app" class="max-w-2xl mx-auto p-4">
+  <h1 class="text-2xl font-bold text-center mb-4 text-green-400">🎱 トンボラ（1-90番号ビンゴ）</h1>
+
+  <div class="flex gap-2 items-center justify-center mb-4">
+    <button id="draw-btn" class="bg-green-600 hover:bg-green-700 rounded-lg px-6 py-3 text-lg font-bold">🎱 抽選する！</button>
+    <button id="reset-btn" class="bg-gray-600 hover:bg-gray-700 rounded-lg px-4 py-2 text-sm" aria-label="ゲームをリセット">🔄 リセット</button>
+    <button id="toggle-card-btn" class="bg-purple-600 hover:bg-purple-700 rounded-lg px-3 py-2 text-xs">🎫 カード生成</button>
+  </div>
+
+  <div id="draw-animation" class="hidden text-center py-6">
+    <div id="draw-num" class="text-8xl font-bold text-yellow-400 animate-pulse"></div>
+    <div id="draw-label" class="text-2xl text-gray-300 mt-2"></div>
+  </div>
+
+  <div class="bg-gray-800 rounded-lg p-3 mb-4">
+    <div class="flex justify-between items-center mb-2">
+      <h2 class="text-sm font-semibold text-yellow-300">呼ばれた番号（<span id="drawn-count">0</span>/90）</h2>
+      <div class="text-xs text-gray-400">残り <span id="remaining">90</span> 個</div>
+    </div>
+    <div id="number-grid" class="grid gap-1" style="grid-template-columns: repeat(18, 1fr)"></div>
+  </div>
+
+  <div id="card-section" class="hidden bg-gray-800 rounded-lg p-4">
+    <div class="flex justify-between items-center mb-3">
+      <h2 class="text-lg font-semibold text-yellow-300">🎫 参加者カード（5×3）</h2>
+      <button id="new-card-btn" class="bg-purple-600 hover:bg-purple-700 rounded px-3 py-1 text-sm">新しいカード</button>
+    </div>
+    <div id="bingo-card" class="grid grid-cols-5 gap-1 mb-3"></div>
+    <div id="card-status" class="text-center text-sm text-gray-400"></div>
+  </div>
+</div>
+<script>
+const numbers = Array.from({length: 90}, (_,i) => i + 1);
+let bag = [...numbers];
+let drawn = new Set();
+let cardNumbers = [];
+let cardMarked = new Set();
+
+const groups = {
+  1: '先頭（1-9）', 2: '先頭（10-19）', 3: '20番台', 4: '30番台', 5: '40番台',
+  6: '50番台', 7: '60番台', 8: '70番台', 9: '80番台', 0: '末尾（90）'
+};
+
+function getGroup(n) {
+  if (n === 90) return '末尾（90）';
+  const d = Math.floor(n / 10);
+  if (d === 0) return '先頭（1-9）';
+  if (d === 1) return '10番台';
+  return d + '0番台';
+}
+
+function renderGrid() {
+  const grid = document.getElementById('number-grid');
+  grid.innerHTML = '';
+  for (let n = 1; n <= 90; n++) {
+    const cell = document.createElement('div');
+    cell.className = 'text-center text-xs rounded py-0.5 font-mono ' +
+      (drawn.has(n) ? 'bg-green-600 text-white font-bold' : 'bg-gray-700 text-gray-400');
+    cell.textContent = n;
+    grid.appendChild(cell);
+  }
+  document.getElementById('drawn-count').textContent = drawn.size;
+  document.getElementById('remaining').textContent = 90 - drawn.size;
+  updateCardStatus();
+}
+
+let animTimer = null;
+document.getElementById('draw-btn').addEventListener('click', () => {
+  if (bag.length === 0) { alert('全番号が抽選されました！'); return; }
+
+  // Animation
+  const animDiv = document.getElementById('draw-animation');
+  animDiv.classList.remove('hidden');
+
+  let count = 0;
+  if (animTimer) clearInterval(animTimer);
+
+  animTimer = setInterval(() => {
+    const fake = Math.floor(Math.random() * 90) + 1;
+    document.getElementById('draw-num').textContent = fake;
+    count++;
+    if (count >= 15) {
+      clearInterval(animTimer);
+      // Draw actual number
+      const idx = Math.floor(Math.random() * bag.length);
+      const num = bag.splice(idx, 1)[0];
+      drawn.add(num);
+      document.getElementById('draw-num').textContent = num;
+      document.getElementById('draw-label').textContent = getGroup(num) + ' の ' + num + ' 番！';
+      renderGrid();
+    }
+  }, 60);
+});
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  if (!confirm('ゲームをリセットしますか？')) return;
+  bag = [...numbers];
+  drawn = new Set();
+  cardMarked = new Set();
+  document.getElementById('draw-animation').classList.add('hidden');
+  if (animTimer) clearInterval(animTimer);
+  renderGrid();
+  if (cardNumbers.length > 0) renderCard();
+});
+
+// Card generation
+function generateCard() {
+  cardNumbers = [];
+  cardMarked = new Set();
+  // 5×3 = 15 numbers, spread across 5 columns (each 18 numbers)
+  for (let col = 0; col < 5; col++) {
+    const start = col * 18 + 1;
+    const pool = [];
+    for (let n = start; n < start + 18 && n <= 90; n++) pool.push(n);
+    // Pick 3 from each column
+    const picked = [];
+    while (picked.length < 3) {
+      const idx = Math.floor(Math.random() * pool.length);
+      picked.push(pool.splice(idx, 1)[0]);
+    }
+    picked.sort((a,b)=>a-b).forEach(n => cardNumbers.push(n));
+  }
+}
+
+function renderCard() {
+  const card = document.getElementById('bingo-card');
+  card.innerHTML = '';
+  // 5 cols x 3 rows - lay out as 15 numbers row by row
+  // Reorder: col-major to row-major
+  const rowMajor = [];
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 5; col++) {
+      rowMajor.push(cardNumbers[col * 3 + row]);
+    }
+  }
+  rowMajor.forEach(n => {
+    const cell = document.createElement('div');
+    const isDrawn = drawn.has(n);
+    const isMarked = cardMarked.has(n);
+    cell.className = 'text-center py-2 rounded font-bold text-sm cursor-pointer ' +
+      (isMarked ? 'bg-green-600 text-white' : (isDrawn ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-300'));
+    cell.textContent = n;
+    cell.dataset.n = n;
+    cell.addEventListener('click', () => {
+      const num = parseInt(cell.dataset.n);
+      if (cardMarked.has(num)) cardMarked.delete(num);
+      else cardMarked.add(num);
+      renderCard();
+    });
+    card.appendChild(cell);
+  });
+  updateCardStatus();
+}
+
+function updateCardStatus() {
+  if (cardNumbers.length === 0) return;
+  const matchCount = cardNumbers.filter(n => drawn.has(n)).length;
+  const statusDiv = document.getElementById('card-status');
+  if (matchCount >= 15) {
+    statusDiv.textContent = '🎉 TOMBOLA! 全番号一致！';
+    statusDiv.className = 'text-center text-sm text-green-400 font-bold';
+  } else {
+    statusDiv.textContent = `${matchCount}/15 一致 | クリックでマーク`;
+    statusDiv.className = 'text-center text-sm text-gray-400';
+  }
+}
+
+document.getElementById('toggle-card-btn').addEventListener('click', () => {
+  const section = document.getElementById('card-section');
+  section.classList.toggle('hidden');
+  if (!section.classList.contains('hidden') && cardNumbers.length === 0) {
+    generateCard();
+    renderCard();
+  }
+});
+
+document.getElementById('new-card-btn').addEventListener('click', () => {
+  generateCard();
+  renderCard();
+});
+
+renderGrid();
+</script>
+</body>
+</html>
